@@ -7,14 +7,15 @@
 
 import logging
 
+from charms.oai_5g_nrf.v0.fiveg_nrf import FiveGNRFRequires  # type: ignore[import]
 from charms.observability_libs.v1.kubernetes_service_patch import (  # type: ignore[import]
     KubernetesServicePatch,
     ServicePort,
 )
 from jinja2 import Environment, FileSystemLoader
-from ops.charm import CharmBase, ConfigChangedEvent, PebbleReadyEvent
+from ops.charm import CharmBase, ConfigChangedEvent
 from ops.main import main
-from ops.model import ActiveStatus, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -47,25 +48,9 @@ class Oai5GUDROperatorCharm(CharmBase):
                 ),
             ],
         )
-        self.framework.observe(self.on.udr_pebble_ready, self._on_udr_pebble_ready)
+        self.nrf_requires = FiveGNRFRequires(self, "fiveg-nrf")
         self.framework.observe(self.on.config_changed, self._on_config_changed)
-
-    def _on_udr_pebble_ready(self, event: PebbleReadyEvent) -> None:
-        """Triggered on Pebble Ready Event.
-
-        Args:
-            event: Pebble Ready Event
-
-        Returns:
-            None
-        """
-        if not self._config_file_is_pushed:
-            self.unit.status = WaitingStatus("Waiting for config files to be pushed")
-            event.defer()
-            return
-        self._container.add_layer("udr", self._pebble_layer, combine=True)
-        self._container.replan()
-        self.unit.status = ActiveStatus()
+        self.framework.observe(self.on.fiveg_nrf_relation_changed, self._on_config_changed)
 
     def _on_config_changed(self, event: ConfigChangedEvent) -> None:
         """Triggered on any change in configuration.
@@ -80,9 +65,36 @@ class Oai5GUDROperatorCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for Pebble in workload container")
             event.defer()
             return
+        if not self._nrf_relation_created:
+            self.unit.status = BlockedStatus("Waiting for relation to NRF to be created")
+            return
+        if not self.nrf_requires.nrf_ipv4_address_available:
+            self.unit.status = WaitingStatus(
+                "Waiting for NRF IPv4 address to be available in relation data"
+            )
+            return
         self._push_config()
+        self._update_pebble_layer()
+        self.unit.status = ActiveStatus()
+
+    def _update_pebble_layer(self) -> None:
+        """Updates pebble layer with new configuration.
+
+        Returns:
+            None
+        """
+        self._container.add_layer("udr", self._pebble_layer, combine=True)
         self._container.replan()
         self.unit.status = ActiveStatus()
+
+    @property
+    def _nrf_relation_created(self) -> bool:
+        return self._relation_created("fiveg-nrf")
+
+    def _relation_created(self, relation_name: str) -> bool:
+        if not self.model.get_relation(relation_name):
+            return False
+        return True
 
     def _push_config(self) -> None:
         jinja2_environment = Environment(loader=FileSystemLoader("src/templates/"))
@@ -98,10 +110,10 @@ class Oai5GUDROperatorCharm(CharmBase):
             nudr_interface_port=self._config_nudr_interface_port,
             nudr_interface_http2_port=self._config_nudr_interface_http2_port,
             nudr_interface_api_version=self._config_nudr_interface_api_version,
-            nrf_ipv4_address=self._config_nrf_ipv4_address,
-            nrf_port=self._config_nrf_port,
-            nrf_api_version=self._config_nrf_api_version,
-            nrf_fqdn=self._config_nrf_fqdn,
+            nrf_ipv4_address=self.nrf_requires.nrf_ipv4_address,
+            nrf_port=self.nrf_requires.nrf_port,
+            nrf_api_version=self.nrf_requires.nrf_api_version,
+            nrf_fqdn=self.nrf_requires.nrf_fqdn,
             mysql_server=self._config_mysql_server,
             mysql_user=self._config_mysql_user,
             mysql_password=self._config_mysql_password,
@@ -143,22 +155,6 @@ class Oai5GUDROperatorCharm(CharmBase):
     @property
     def _config_use_http2(self) -> str:
         return "no"
-
-    @property
-    def _config_nrf_ipv4_address(self) -> str:
-        return "127.0.0.1"
-
-    @property
-    def _config_nrf_port(self) -> str:
-        return "80"
-
-    @property
-    def _config_nrf_api_version(self) -> str:
-        return "v1"
-
-    @property
-    def _config_nrf_fqdn(self) -> str:
-        return "oai-nrf-svc"
 
     @property
     def _config_mysql_server(self) -> str:
@@ -208,27 +204,6 @@ class Oai5GUDROperatorCharm(CharmBase):
                     "summary": "udr",
                     "command": f"/bin/bash /openair-udr/bin/entrypoint.sh /openair-udr/bin/oai_udr -c {BASE_CONFIG_PATH}/{CONFIG_FILE_NAME} -o",  # noqa: E501
                     "startup": "enabled",
-                    "environment": {
-                        "INSTANCE": self._config_instance,
-                        "MYSQL_DB": self._config_mysql_database,
-                        "MYSQL_PASS": self._config_mysql_password,
-                        "MYSQL_IPV4_ADDRESS": self._config_mysql_server,
-                        "MYSQL_USER": self._config_mysql_user,
-                        "NRF_API_VERSION": self._config_nrf_api_version,
-                        "NRF_FQDN": self._config_nrf_fqdn,
-                        "NRF_IPV4_ADDRESS": self._config_nrf_ipv4_address,
-                        "NRF_PORT": self._config_nrf_port,
-                        "PID_DIRECTORY": self._config_pid_directory,
-                        "REGISTER_NRF": self._config_register_nrf,
-                        "TZ": self._config_timezone,
-                        "UDR_API_VERSION": self._config_nudr_interface_api_version,
-                        "UDR_INTERFACE_PORT_FOR_NUDR": self._config_nudr_interface_port,
-                        "UDR_INTERFACE_HTTP2_PORT_FOR_NUDR": self._config_nudr_interface_http2_port,  # noqa: E501
-                        "UDR_INTERFACE_NAME_FOR_NUDR": self._config_nudr_interface_name,
-                        "UDR_NAME": self._config_udr_name,
-                        "USE_FQDN_DNS": self._config_use_fqdn_dns,
-                        "USE_HTTP2": self._config_use_http2,
-                    },
                 }
             },
         }

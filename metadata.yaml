@@ -24,3 +24,7 @@ resources:
     type: oci-image
     description: OCI image for udr
     upstream-source: docker.io/oaisoftwarealliance/oai-udr:v1.4.0
+
+requires:
+  fiveg-nrf:
+    interface: fiveg-nrf

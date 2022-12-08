@@ -1,4 +1,4 @@
-name: Upload smf
+name: Publish
 
 on:
   push:
