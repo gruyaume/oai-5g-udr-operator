@@ -1,0 +1,26 @@
+name: oai-5g-udr
+
+summary: OpenAirInterface 5G Core Network udr
+
+description: |
+  OPENAIR-CN-5G is an implementation of the 3GPP specifications for the 5G Core Network. This 
+  charms deploys the udr component of the 5G Core Network.
+
+containers:
+  udr:
+    resource: udr-image
+    mounts:
+      - storage: config
+        location: /openair-udr/etc
+
+storage:
+  config:
+    type: filesystem
+    description: udr Config directory
+    minimum-size: 1G
+
+resources:
+  udr-image:
+    type: oci-image
+    description: OCI image for udr
+    upstream-source: docker.io/oaisoftwarealliance/oai-udr:v1.4.0

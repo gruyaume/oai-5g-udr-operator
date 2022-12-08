@@ -1,0 +1,4 @@
+ops >= 1.4.0
+lightkube
+lightkube-models
+jinja2
