@@ -7,6 +7,9 @@
 
 import logging
 
+from charms.data_platform_libs.v0.database_requires import (  # type: ignore[import]
+    DatabaseRequires,
+)
 from charms.oai_5g_nrf.v0.fiveg_nrf import FiveGNRFRequires  # type: ignore[import]
 from charms.observability_libs.v1.kubernetes_service_patch import (  # type: ignore[import]
     KubernetesServicePatch,
@@ -21,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 BASE_CONFIG_PATH = "/openair-udr/etc"
 CONFIG_FILE_NAME = "udr.conf"
+DATABASE_NAME = "oai_db"
 
 
 class Oai5GUDROperatorCharm(CharmBase):
@@ -49,8 +53,12 @@ class Oai5GUDROperatorCharm(CharmBase):
             ],
         )
         self.nrf_requires = FiveGNRFRequires(self, "fiveg-nrf")
+        self.database = DatabaseRequires(
+            self, relation_name="database", database_name=DATABASE_NAME
+        )
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.fiveg_nrf_relation_changed, self._on_config_changed)
+        self.framework.observe(self.database.on.database_created, self._on_config_changed)
 
     def _on_config_changed(self, event: ConfigChangedEvent) -> None:
         """Triggered on any change in configuration.
@@ -65,8 +73,14 @@ class Oai5GUDROperatorCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for Pebble in workload container")
             event.defer()
             return
+        if not self._database_relation_created:
+            self.unit.status = BlockedStatus("Waiting for relation to database to be created")
+            return
         if not self._nrf_relation_created:
             self.unit.status = BlockedStatus("Waiting for relation to NRF to be created")
+            return
+        if not self._database_relation_data_is_available:
+            self.unit.status = WaitingStatus("Waiting for database relation data to be available")
             return
         if not self.nrf_requires.nrf_ipv4_address_available:
             self.unit.status = WaitingStatus(
@@ -76,6 +90,22 @@ class Oai5GUDROperatorCharm(CharmBase):
         self._push_config()
         self._update_pebble_layer()
         self.unit.status = ActiveStatus()
+
+    @property
+    def _database_relation_data_is_available(self) -> bool:
+        relation_data = self.database.fetch_relation_data()
+        if not relation_data:
+            return False
+        relation = self.model.get_relation(relation_name="database")
+        if not relation:
+            return False
+        if "username" not in relation_data[relation.id]:
+            return False
+        if "password" not in relation_data[relation.id]:
+            return False
+        if "endpoints" not in relation_data[relation.id]:
+            return False
+        return True
 
     def _update_pebble_layer(self) -> None:
         """Updates pebble layer with new configuration.
@@ -90,6 +120,10 @@ class Oai5GUDROperatorCharm(CharmBase):
     @property
     def _nrf_relation_created(self) -> bool:
         return self._relation_created("fiveg-nrf")
+
+    @property
+    def _database_relation_created(self) -> bool:
+        return self._relation_created("database")
 
     def _relation_created(self, relation_name: str) -> bool:
         if not self.model.get_relation(relation_name):
@@ -114,10 +148,10 @@ class Oai5GUDROperatorCharm(CharmBase):
             nrf_port=self.nrf_requires.nrf_port,
             nrf_api_version=self.nrf_requires.nrf_api_version,
             nrf_fqdn=self.nrf_requires.nrf_fqdn,
-            mysql_server=self._config_mysql_server,
-            mysql_user=self._config_mysql_user,
-            mysql_password=self._config_mysql_password,
-            mysql_database=self._config_mysql_database,
+            mysql_server=self._database_relation_server,
+            mysql_user=self._database_relation_user,
+            mysql_password=self._database_relation_password,
+            mysql_database=DATABASE_NAME,
         )
 
         self._container.push(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}", source=content)
@@ -157,20 +191,28 @@ class Oai5GUDROperatorCharm(CharmBase):
         return "no"
 
     @property
-    def _config_mysql_server(self) -> str:
-        return "mysql"
+    def _database_relation_server(self) -> str:
+        relation_data = self.database.fetch_relation_data()
+        relation = self.model.get_relation(relation_name="database")
+        if not relation:
+            raise ValueError("Database relation is not created")
+        return relation_data[relation.id]["endpoints"].split(",")[0]
 
     @property
-    def _config_mysql_user(self) -> str:
-        return "root"
+    def _database_relation_user(self) -> str:
+        relation_data = self.database.fetch_relation_data()
+        relation = self.model.get_relation(relation_name="database")
+        if not relation:
+            raise ValueError("Database relation is not created")
+        return relation_data[relation.id]["username"]
 
     @property
-    def _config_mysql_password(self) -> str:
-        return "linux"
-
-    @property
-    def _config_mysql_database(self) -> str:
-        return "oai_db"
+    def _database_relation_password(self) -> str:
+        relation_data = self.database.fetch_relation_data()
+        relation = self.model.get_relation(relation_name="database")
+        if not relation:
+            raise ValueError("Database relation is not created")
+        return relation_data[relation.id]["password"]
 
     @property
     def _config_nudr_interface_name(self) -> str:

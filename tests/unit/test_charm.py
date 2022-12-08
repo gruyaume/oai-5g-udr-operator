@@ -23,10 +23,7 @@ class TestCharm(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
-    @patch("ops.model.Container.push")
-    def test_given_nrf_relation_contains_nrf_info_when_nrf_relation_joined_then_config_file_is_pushed(  # noqa: E501
-        self, mock_push
-    ):
+    def _create_nrf_relation_with_valid_data(self):
         self.harness.set_can_connect(container="udr", val=True)
         relation_id = self.harness.add_relation("fiveg-nrf", "nrf")
         self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="nrf/0")
@@ -44,6 +41,37 @@ class TestCharm(unittest.TestCase):
         self.harness.update_relation_data(
             relation_id=relation_id, app_or_unit="nrf", key_values=key_values
         )
+        return nrf_ipv4_address, nrf_port, nrf_api_version, nrf_fqdn
+
+    def _create_database_relation_with_valid_data(self):
+        relation_id = self.harness.add_relation(relation_name="database", remote_app="mysql")
+        self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="mysql/0")
+        username = "whatever username"
+        password = "whatever password"
+        endpoints = "whatever endpoint 1,whatever endpoint 2"
+        key_values = {
+            "username": username,
+            "password": password,
+            "endpoints": endpoints,
+        }
+        self.harness.update_relation_data(
+            relation_id=relation_id, app_or_unit="mysql", key_values=key_values
+        )
+        return username, password, endpoints
+
+    @patch("ops.model.Container.push")
+    def test_given_nrf_relation_contains_nrf_info_when_nrf_relation_joined_then_config_file_is_pushed(  # noqa: E501
+        self, mock_push
+    ):
+        self.harness.set_can_connect(container="udr", val=True)
+
+        username, password, endpoints = self._create_database_relation_with_valid_data()
+        (
+            nrf_ipv4_address,
+            nrf_port,
+            nrf_api_version,
+            nrf_fqdn,
+        ) = self._create_nrf_relation_with_valid_data()
 
         mock_push.assert_called_with(
             path="/openair-udr/etc/udr.conf",
@@ -79,9 +107,9 @@ class TestCharm(unittest.TestCase):
             "  MYSQL:\n"
             "  {\n"
             "    # MySQL options\n"
-            '    MYSQL_SERVER = "mysql";\n'
-            '    MYSQL_USER   = "root";\n'
-            '    MYSQL_PASS   = "linux";\n'
+            f'    MYSQL_SERVER = "{ endpoints.split(",")[0] }";\n'
+            f'    MYSQL_USER   = "{ username }";\n'
+            f'    MYSQL_PASS   = "{ password }";\n'
             '    MYSQL_DB     = "oai_db";\n'
             "    DB_CONNECTION_TIMEOUT = 300;           # Reset the connection to the DB after expiring the timeout (in second)\n"  # noqa: E501, W505
             "  };\n"
@@ -89,23 +117,13 @@ class TestCharm(unittest.TestCase):
         )
 
     @patch("ops.model.Container.push")
-    def test_given_nrf_relation_contains_nrf_info_when_nrf_relation_joined_then_pebble_plan_is_created(  # noqa: E501
+    def test_given_nrf_and_db_relation_are_set_when_config_changed_then_pebble_plan_is_created(  # noqa: E501
         self, _
     ):
-        self.harness.set_can_connect(container="udr", val=True)
-        relation_id = self.harness.add_relation("fiveg-nrf", "nrf")
-        self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="nrf/0")
+        self._create_database_relation_with_valid_data()
+        self._create_nrf_relation_with_valid_data()
 
-        nrf_ipv4_address = "1.2.3.4"
-        key_values = {
-            "nrf_ipv4_address": nrf_ipv4_address,
-            "nrf_port": "80",
-            "nrf_fqdn": "nrf.example.com",
-            "nrf_api_version": "v1",
-        }
-        self.harness.update_relation_data(
-            relation_id=relation_id, app_or_unit="nrf", key_values=key_values
-        )
+        self.harness.update_config({"udrInterfaceNameForNudr": "eth0"})
 
         expected_plan = {
             "services": {
