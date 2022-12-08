@@ -199,29 +199,6 @@ class Oai5GUDROperatorCharm(CharmBase):
     @property
     def _pebble_layer(self) -> dict:
         """Return a dictionary representing a Pebble layer."""
-        """
-          - name: PID_DIRECTORY
-            valueFrom:
-              configMapKeyRef:
-                name: oai-udr-configmap
-                key: pidDirectory
-          - name: USE_FQDN_DNS
-            valueFrom:
-              configMapKeyRef:
-                name: oai-udr-configmap
-                key: useFqdnDns
-          - name: UDR_INTERFACE_NAME_FOR_NUDR
-            valueFrom:
-              configMapKeyRef:
-                name: oai-udr-configmap
-                key: udrInterfaceNameForNudr
-          - name: REGISTER_NRF
-            valueFrom:
-              configMapKeyRef:
-                name: oai-udr-configmap
-                key: registerNrf
-
-        """
         return {
             "summary": "udr layer",
             "description": "pebble config layer for udr",
