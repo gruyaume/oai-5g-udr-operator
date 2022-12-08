@@ -1,0 +1,45 @@
+UDR =
+{
+  INSTANCE_ID = {{ instance }};            # 0 is the default
+  PID_DIRECTORY = "{{ pid_directory }}";   # /var/run is the default
+  UDR_NAME = "{{ udr_name }}";
+
+
+  SUPPORT_FEATURES:{
+    USE_FQDN_DNS = "{{ use_fqdn_dns }}";    # Set to yes if UDR will relying on a DNS to resolve UDM's FQDN
+    REGISTER_NRF = "{{ register_nrf }}";    # Set to yes if UDR resgisters to an NRF
+    USE_HTTP2    = "{{ use_http2 }}";       # Set to yes to enable HTTP2 for UDR server
+    DATABASE     = "MySQL";             # Set to 'MySQL'/'Cassandra' to use MySQL/Cassandra
+  };
+
+  INTERFACES:
+  {
+    # NUDR Interface (SBI)
+    NUDR:
+    {
+      INTERFACE_NAME = "{{ nudr_interface_name }}";
+      IPV4_ADDRESS   = "read";
+      PORT           = {{ nudr_interface_port }};         # Default value: 80
+      HTTP2_PORT     = {{ nudr_interface_http2_port }};   # Default value: 443
+      API_VERSION    = "{{ nudr_interface_api_version }}";
+    };
+  };
+
+  NRF:
+  {
+    IPV4_ADDRESS = "{{ nrf_ipv4_address }}";
+    PORT         = {{ nrf_port }};            # Default value: 80
+    API_VERSION  = "{{ nrf_api_version }}";
+    FQDN         = "{{ nrf_fqdn }}";
+  };
+
+  MYSQL:
+  {
+    # MySQL options
+    MYSQL_SERVER = "{{ mysql_server }}";
+    MYSQL_USER   = "{{ mysql_user }}";
+    MYSQL_PASS   = "{{ mysql_password }}";
+    MYSQL_DB     = "{{ mysql_database }}";
+    DB_CONNECTION_TIMEOUT = 300;           # Reset the connection to the DB after expiring the timeout (in second)
+  };
+};
