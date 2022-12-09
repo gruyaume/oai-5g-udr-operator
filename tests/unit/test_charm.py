@@ -18,9 +18,11 @@ class TestCharm(unittest.TestCase):
     )
     def setUp(self):
         ops.testing.SIMULATE_CAN_CONNECT = True
+        self.model_name = "whatever"
         self.addCleanup(setattr, ops.testing, "SIMULATE_CAN_CONNECT", False)
         self.harness = Harness(Oai5GUDROperatorCharm)
         self.addCleanup(self.harness.cleanup)
+        self.harness.set_model_name(name=self.model_name)
         self.harness.begin()
 
     def _create_nrf_relation_with_valid_data(self):
@@ -141,3 +143,18 @@ class TestCharm(unittest.TestCase):
         service = self.harness.model.unit.get_container("udr").get_service("udr")
         self.assertTrue(service.is_running())
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+
+    def test_given_unit_is_leader_when_nrf_relation_joined_then_udr_relation_data_is_set(self):
+        self.harness.set_leader(True)
+
+        relation_id = self.harness.add_relation(relation_name="fiveg-udr", remote_app="udm")
+        self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="udm/0")
+
+        relation_data = self.harness.get_relation_data(
+            relation_id=relation_id, app_or_unit=self.harness.model.app.name
+        )
+
+        assert relation_data["udr_ipv4_address"] == "127.0.0.1"
+        assert relation_data["udr_fqdn"] == f"oai-5g-udr.{self.model_name}.svc.cluster.local"
+        assert relation_data["udr_port"] == "80"
+        assert relation_data["udr_api_version"] == "v1"

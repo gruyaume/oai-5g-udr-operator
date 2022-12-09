@@ -17,7 +17,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 2
+LIBPATCH = 3
 
 
 logger = logging.getLogger(__name__)
@@ -116,8 +116,6 @@ class FiveGNRFRequires(Object):
     @property
     def nrf_ipv4_address_available(self) -> bool:
         """Returns whether nrf address is available in relation data."""
-        relation = self.model.get_relation(relation_name=self.relationship_name)
-        remote_app_relation_data = relation.data.get(relation.app)
         if self.nrf_ipv4_address:
             return True
         else:
@@ -194,7 +192,12 @@ class FiveGNRFProvides(Object):
         self.charm = charm
 
     def set_nrf_information(
-        self, nrf_ipv4_address: str, nrf_fqdn: str, nrf_port: str, nrf_api_version: str
+        self,
+        nrf_ipv4_address: str,
+        nrf_fqdn: str,
+        nrf_port: str,
+        nrf_api_version: str,
+        relation_id: int,
     ) -> None:
         """Sets NRF information in relation data.
 
@@ -203,13 +206,14 @@ class FiveGNRFProvides(Object):
             nrf_fqdn: NRF FQDN
             nrf_port: NRF port
             nrf_api_version: NRF API version
+            relation_id: Relation ID
 
         Returns:
             None
         """
-        if not self.model.get_relation(self.relationship_name):
+        relation = self.model.get_relation(self.relationship_name, relation_id=relation_id)
+        if not relation:
             raise RuntimeError(f"Relation {self.relationship_name} not created yet.")
-        relation = self.model.get_relation(self.relationship_name)
         relation.data[self.charm.app].update(
             {
                 "nrf_ipv4_address": nrf_ipv4_address,
