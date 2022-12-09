@@ -11,6 +11,7 @@ from charms.data_platform_libs.v0.database_requires import (  # type: ignore[imp
     DatabaseRequires,
 )
 from charms.oai_5g_nrf.v0.fiveg_nrf import FiveGNRFRequires  # type: ignore[import]
+from charms.oai_5g_udr.v0.fiveg_udr import FiveGUDRProvides  # type: ignore[import]
 from charms.observability_libs.v1.kubernetes_service_patch import (  # type: ignore[import]
     KubernetesServicePatch,
     ServicePort,
@@ -52,6 +53,7 @@ class Oai5GUDROperatorCharm(CharmBase):
                 ),
             ],
         )
+        self.udr_provides = FiveGUDRProvides(self, "fiveg-udr")
         self.nrf_requires = FiveGNRFRequires(self, "fiveg-nrf")
         self.database = DatabaseRequires(
             self, relation_name="database", database_name=DATABASE_NAME
@@ -59,6 +61,25 @@ class Oai5GUDROperatorCharm(CharmBase):
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.fiveg_nrf_relation_changed, self._on_config_changed)
         self.framework.observe(self.database.on.database_created, self._on_config_changed)
+        self.framework.observe(
+            self.on.fiveg_udr_relation_joined, self._on_fiveg_udr_relation_joined
+        )
+
+    def _on_fiveg_udr_relation_joined(self, event) -> None:
+        """Triggered when a relation is joined.
+
+        Args:
+            event: Relation Joined Event
+        """
+        if not self.unit.is_leader():
+            return
+        self.udr_provides.set_udr_information(
+            udr_ipv4_address="127.0.0.1",
+            udr_fqdn=f"{self.model.app.name}.{self.model.name}.svc.cluster.local",
+            udr_port=self._config_nudr_interface_port,
+            udr_api_version=self._config_nudr_interface_api_version,
+            relation_id=event.relation.id,
+        )
 
     def _on_config_changed(self, event: ConfigChangedEvent) -> None:
         """Triggered on any change in configuration.
@@ -229,10 +250,6 @@ class Oai5GUDROperatorCharm(CharmBase):
     @property
     def _config_nudr_interface_api_version(self) -> str:
         return "v1"
-
-    @property
-    def _config_timezone(self) -> str:
-        return "Europe/Paris"
 
     @property
     def _pebble_layer(self) -> dict:
