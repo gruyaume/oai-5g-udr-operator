@@ -34,7 +34,7 @@ class Oai5GUDROperatorCharm(CharmBase):
     def __init__(self, *args):
         """Observes juju events."""
         super().__init__(*args)
-        self._container_name = "udr"
+        self._container_name = self._service_name = "udr"
         self._container = self.unit.get_container(self._container_name)
         self.service_patcher = KubernetesServicePatch(
             charm=self,
@@ -72,6 +72,10 @@ class Oai5GUDROperatorCharm(CharmBase):
             event: Relation Joined Event
         """
         if not self.unit.is_leader():
+            return
+        if not self._udr_service_started:
+            logger.info("UDR service not started yet, deferring event")
+            event.defer()
             return
         self.udr_provides.set_udr_information(
             udr_ipv4_address="127.0.0.1",
@@ -136,7 +140,15 @@ class Oai5GUDROperatorCharm(CharmBase):
         """
         self._container.add_layer("udr", self._pebble_layer, combine=True)
         self._container.replan()
-        self.unit.status = ActiveStatus()
+        self._container.restart(self._service_name)
+
+    @property
+    def _udr_service_started(self) -> bool:
+        if not self._container.can_connect():
+            return False
+        if not self._container.get_service(self._service_name).is_running():
+            return False
+        return True
 
     @property
     def _nrf_relation_created(self) -> bool:
@@ -217,7 +229,7 @@ class Oai5GUDROperatorCharm(CharmBase):
         relation = self.model.get_relation(relation_name="database")
         if not relation:
             raise ValueError("Database relation is not created")
-        return relation_data[relation.id]["endpoints"].split(",")[0]
+        return relation_data[relation.id]["endpoints"].split(",")[0].split(":")[0]
 
     @property
     def _database_relation_user(self) -> str:
@@ -258,7 +270,7 @@ class Oai5GUDROperatorCharm(CharmBase):
             "summary": "udr layer",
             "description": "pebble config layer for udr",
             "services": {
-                "udr": {
+                self._service_name: {
                     "override": "replace",
                     "summary": "udr",
                     "command": f"/bin/bash /openair-udr/bin/entrypoint.sh /openair-udr/bin/oai_udr -c {BASE_CONFIG_PATH}/{CONFIG_FILE_NAME} -o",  # noqa: E501

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import ops.testing
 from ops.model import ActiveStatus
+from ops.pebble import ServiceInfo, ServiceStartup, ServiceStatus
 from ops.testing import Harness
 
 from charm import Oai5GUDROperatorCharm
@@ -144,8 +145,17 @@ class TestCharm(unittest.TestCase):
         self.assertTrue(service.is_running())
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
-    def test_given_unit_is_leader_when_nrf_relation_joined_then_udr_relation_data_is_set(self):
+    @patch("ops.model.Container.get_service")
+    def test_given_unit_is_leader_when_nrf_relation_joined_then_udr_relation_data_is_set(
+        self, patch_get_service
+    ):
         self.harness.set_leader(True)
+        self.harness.set_can_connect(container="udr", val=True)
+        patch_get_service.return_value = ServiceInfo(
+            name="udr",
+            current=ServiceStatus.ACTIVE,
+            startup=ServiceStartup.ENABLED,
+        )
 
         relation_id = self.harness.add_relation(relation_name="fiveg-udr", remote_app="udm")
         self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="udm/0")
