@@ -253,7 +253,7 @@ class Oai5GUDROperatorCharm(CharmBase):
 
     @property
     def _config_nudr_interface_name(self) -> str:
-        return self.model.config["udrInterfaceNameForNudr"]
+        return "eth0"
 
     @property
     def _config_nudr_interface_port(self) -> str:

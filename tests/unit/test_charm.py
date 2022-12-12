@@ -124,9 +124,8 @@ class TestCharm(unittest.TestCase):
         self, _
     ):
         self._create_database_relation_with_valid_data()
-        self._create_nrf_relation_with_valid_data()
 
-        self.harness.update_config({"udrInterfaceNameForNudr": "eth0"})
+        self._create_nrf_relation_with_valid_data()
 
         expected_plan = {
             "services": {

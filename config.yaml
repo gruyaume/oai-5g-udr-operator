@@ -1,7 +1,0 @@
-options:
-  udrInterfaceNameForNudr:
-    type: string
-    description: |
-      The interface name for the udr to connect to the nudr
-    default: eth0
-    required: true
