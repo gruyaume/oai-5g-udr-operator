@@ -17,7 +17,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 2
+LIBPATCH = 3
 
 
 logger = logging.getLogger(__name__)
@@ -214,6 +214,14 @@ class FiveGUDRProvides(Object):
         relation = self.model.get_relation(self.relationship_name, relation_id=relation_id)
         if not relation:
             raise RuntimeError(f"Relation {self.relationship_name} not created yet.")
+        if self.udr_data_is_set(
+            relation_id=relation_id,
+            udr_ipv4_address=udr_ipv4_address,
+            udr_fqdn=udr_fqdn,
+            udr_port=udr_port,
+            udr_api_version=udr_api_version,
+        ):
+            return
         relation.data[self.charm.app].update(
             {
                 "udr_ipv4_address": udr_ipv4_address,
@@ -222,3 +230,43 @@ class FiveGUDRProvides(Object):
                 "udr_api_version": udr_api_version,
             }
         )
+
+    def udr_data_is_set(
+        self,
+        relation_id: int,
+        udr_ipv4_address: str,
+        udr_fqdn: str,
+        udr_api_version: str,
+        udr_port: str,
+    ) -> bool:
+        """Returns whether udr_address is set in relation data."""
+        relation = self.model.get_relation(self.relationship_name, relation_id=relation_id)
+        if not relation:
+            raise RuntimeError(f"Relation {self.relationship_name} not created yet.")
+        if relation.data[self.charm.app].get("udr_ipv4_address", None) != udr_ipv4_address:
+            logger.info(f"udr_ipv4_address not set to {udr_ipv4_address} in relation data")
+            return False
+        if relation.data[self.charm.app].get("udr_fqdn", None) != udr_fqdn:
+            logger.info(f"udr_fqdn not set to {udr_fqdn} in relation data")
+            return False
+        if relation.data[self.charm.app].get("udr_port", None) != udr_port:
+            logger.info(f"udr_port not set to {udr_port} in relation data")
+            return False
+        if relation.data[self.charm.app].get("udr_api_version", None) != udr_api_version:
+            logger.info(f"udr_api_version not set to {udr_api_version} in relation data")
+            return False
+        return True
+
+    def set_udr_information_for_all_relations(
+        self, udr_ipv4_address: str, udr_fqdn: str, udr_port: str, udr_api_version: str
+    ) -> None:
+        """Sets UDR information in relation data for all relations."""
+        relations = self.model.relations
+        for relation in relations[self.relationship_name]:
+            self.set_udr_information(
+                udr_ipv4_address=udr_ipv4_address,
+                udr_fqdn=udr_fqdn,
+                udr_port=udr_port,
+                udr_api_version=udr_api_version,
+                relation_id=relation.id,
+            )
