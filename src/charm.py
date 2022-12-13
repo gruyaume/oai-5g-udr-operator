@@ -114,7 +114,17 @@ class Oai5GUDROperatorCharm(CharmBase):
             return
         self._push_config()
         self._update_pebble_layer()
+        if self.unit.is_leader():
+            self._set_udr_information_for_all_relations()
         self.unit.status = ActiveStatus()
+
+    def _set_udr_information_for_all_relations(self):
+        self.udr_provides.set_udr_information_for_all_relations(
+            udr_ipv4_address="127.0.0.1",
+            udr_fqdn=f"{self.model.app.name}.{self.model.name}.svc.cluster.local",
+            udr_port=self._config_nudr_interface_port,
+            udr_api_version=self._config_nudr_interface_api_version,
+        )
 
     @property
     def _database_relation_data_is_available(self) -> bool:
